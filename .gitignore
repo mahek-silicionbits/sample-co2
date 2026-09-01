@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment secrets — NEVER commit these
+.env
+
+# Lambda packaging artifacts — these are build outputs, not source code
+lambda_validator/package/
+lambda_validator/package.zip
+lambda_validator/*.zip
+
+# Local test data
+pipeline/data/
+
+# OS junk files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Node (for later, once frontend/ exists)
+node_modules/
+frontend/build/
+frontend/dist/
