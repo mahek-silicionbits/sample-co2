@@ -24,6 +24,19 @@ def get_mongo_client() -> MongoClient:
     return _client
 
 
+def df_to_mongo_records(df: pd.DataFrame) -> list[dict]:
+    """
+    Converts a DataFrame to a list of dicts suitable for MongoDB insertion,
+    preserving actual datetime objects (not strings) so date range
+    queries work correctly later.
+    """
+    records = df.to_dict(orient="records")
+    for record in records:
+        for key, value in record.items():
+            if isinstance(value, pd.Timestamp):
+                record[key] = value.to_pydatetime()
+    return records
+
 
 def load_raw_to_mongo(df: pd.DataFrame) -> int:
     """
@@ -33,7 +46,7 @@ def load_raw_to_mongo(df: pd.DataFrame) -> int:
     db = client[settings.mongo_db_name]
     collection = db["raw_readings"]
 
-    records = json.loads(df.to_json(orient="records", date_format="iso"))
+    records = df_to_mongo_records(df)
 
     if not records:
         print("[load] No raw records to insert")
@@ -52,7 +65,7 @@ def load_hourly_to_mongo(df: pd.DataFrame) -> int:
     db = client[settings.mongo_db_name]
     collection = db["hourly_aggregates"]
 
-    records = json.loads(df.to_json(orient="records", date_format="iso"))
+    records = df_to_mongo_records(df)
 
     if not records:
         print("[load] No hourly records to insert")
