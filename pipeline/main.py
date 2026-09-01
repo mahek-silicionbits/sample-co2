@@ -1,14 +1,11 @@
 """
 Main entry point for the ETL pipeline.
 
-Runs the full sequence: extract -> validate -> clean -> transform -> load.
-
-Usage:
-    python main.py <s3_key>
-    e.g. python main.py raw-validated/2026-09-01_143022.csv
+Scans raw-validated/ in S3 for files not yet processed, and runs
+the full ETL sequence on each one. Designed to be called repeatedly
+by cron with no arguments needed.
 """
 
-import sys
 from pathlib import Path
 
 from ETL.extract import extract_from_s3
@@ -16,6 +13,39 @@ from ETL.validate import validate
 from ETL.clean import clean
 from ETL.transform import transform
 from ETL.load import load
+from ETL.s3_utils import get_s3_client
+from config import settings
+
+
+def list_unprocessed_files() -> list[str]:
+    """
+    Lists files in raw-validated/ that don't yet have a corresponding
+    output in raw-processed/ — our simple 'already processed' check.
+    """
+    s3 = get_s3_client()
+
+    validated = s3.list_objects_v2(
+        Bucket=settings.s3_bucket_name,
+        Prefix="raw-validated/"
+    ).get("Contents", [])
+
+    processed = s3.list_objects_v2(
+        Bucket=settings.s3_bucket_name,
+        Prefix="raw-processed/"
+    ).get("Contents", [])
+
+    processed_filenames = {Path(obj["Key"]).stem for obj in processed}
+
+    unprocessed_keys = []
+    for obj in validated:
+        key = obj["Key"]
+        if key.endswith("/"):  # skip folder placeholder itself
+            continue
+        filename_stem = Path(key).stem
+        if filename_stem not in processed_filenames:
+            unprocessed_keys.append(key)
+
+    return unprocessed_keys
 
 
 def run_pipeline(s3_key: str) -> None:
@@ -29,10 +59,7 @@ def run_pipeline(s3_key: str) -> None:
 
     source_filename = Path(s3_key).name
 
-    # Extract
     raw_df = extract_from_s3(s3_key)
-
-    # Validate
     valid_df, invalid_df = validate(raw_df)
 
     if len(invalid_df) > 0:
@@ -42,13 +69,8 @@ def run_pipeline(s3_key: str) -> None:
         print("[main] No valid rows to process. Stopping pipeline.")
         return
 
-    # Clean
     cleaned_df = clean(valid_df)
-
-    # Transform
     hourly_df = transform(cleaned_df)
-
-    # Load
     load(cleaned_df, hourly_df, source_filename=source_filename)
 
     print(f"\n{'='*50}")
@@ -57,8 +79,11 @@ def run_pipeline(s3_key: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python main.py <s3_key>")
-        sys.exit(1)
+    unprocessed = list_unprocessed_files()
 
-    run_pipeline(sys.argv[1])
+    if not unprocessed:
+        print("[main] No new files to process.")
+    else:
+        print(f"[main] Found {len(unprocessed)} unprocessed file(s)")
+        for key in unprocessed:
+            run_pipeline(key)
