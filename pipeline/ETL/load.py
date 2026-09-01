@@ -7,7 +7,7 @@ before this just transforms data in memory.
 """
 
 import json
-import boto3
+import certifi
 import pandas as pd
 from datetime import datetime, timezone
 from pymongo import MongoClient
@@ -18,13 +18,9 @@ _client = None
 
 
 def get_mongo_client() -> MongoClient:
-    """
-    Returns a shared MongoDB client, creating it once and reusing it
-    across calls (avoids opening a new connection every single time).
-    """
     global _client
     if _client is None:
-        _client = MongoClient(settings.mongo_uri)
+        _client = MongoClient(settings.mongo_uri, tlsCAFile=certifi.where())
     return _client
 
 
